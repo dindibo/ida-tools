@@ -6,6 +6,8 @@ import json
 SEGMENT_MAX_VALUE = 0xffffffffffffffff
 
 def perm_to_txt(perm):
+    assert 0 <= perm <= 0b111 
+
     return ('r' if perm & segment.PERM_READ else '-') + ('w' if perm & segment.PERM_WRITE else '-') + \
             ('x' if perm & segment.PERM_EXECUTE else '-')
 
@@ -43,6 +45,9 @@ class segment:
         return perm_to_txt(self.permission)
 
 
+    def __str__(self) -> str:
+        return f'{hex(self.startEA)}\t-->\t{hex(self.endEA)}\t[{self.permissionText()}]'
+
 # A generator function that iterates on each segment and returns its start EA
 def iter_segment():
     t = idc.get_next_seg(0x0)
@@ -63,9 +68,28 @@ def iter_segment_t():
 def map_segments():
     segs_EAs = iter_segment()
     segs = []
+    last_segment = None
+    temp_segment = None
 
-    for x in segs_EAs:
-        segs.append(segment())
+    for ea in segs_EAs:
+        temp_seg_t = ida_segment.getseg(ea)
+        temp_segment = segment(ea, -1, permission=temp_seg_t.perm)
+
+        # Use < and > not <= =>
+        # Do last
+        if last_segment is not None:
+            last_segment.endEA = temp_segment.startEA
+
+        # Finish temp
+        segs.append(temp_segment)
+
+        # Update last
+        last_segment = temp_segment
+
+    # Do last
+    last_segment.endEA = SEGMENT_MAX_VALUE
+
+    return segs
 
 # Gets value of RIP
 get_ip = lambda : idc.get_reg_value('rip')
@@ -80,11 +104,8 @@ def search_down_bin(code):
 def check_if_code(ea, codeSubString):
     return codeSubString.lower() in (idc.generate_disasm_line(ea, 0)).lower()
 
+segs = map_segments()
+exec_segs = [seg for seg in segs if seg.permission & segment.PERM_EXECUTE]
 
-segs = [x for x in iter_segment()]
-segs = [ida_segment.getseg(x) for x in segs]
-
-print(segs[0].perm)
-
-
-for x in 
+for x in exec_segs:
+    print(x)
