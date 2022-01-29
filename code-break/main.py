@@ -1,3 +1,4 @@
+from dis import Instruction
 from pprint import pprint
 import idc
 import ida_segment
@@ -96,16 +97,52 @@ get_ip = lambda : idc.get_reg_value('rip')
 
 
 # Search binary data downwards
-def search_down_bin(code):
-    res = idc.find_binary(get_ip(), idc.SEARCH_DOWN, code)
+def search_down_bin(ea, code_hex):
+    res = idc.find_binary(ea, idc.SEARCH_DOWN, code_hex)
     return res
+
 
 # Checks if disassembly of EA yields expected code
 def check_if_code(ea, codeSubString):
     return codeSubString.lower() in (idc.generate_disasm_line(ea, 0)).lower()
 
+
+def is_ea_in_segs(ea, segs):
+    for seg in segs:
+        if seg.startEA < ea < seg.endEA:
+            return True
+
+    return False
+
+
+### Execution
+
+# Parameters
+
+ARG_OPCODE = 'rep stosb'
+ARG_HEX_OPCODE = 'F3 AA'
+
+opcode_len = ARG_HEX_OPCODE.count(' ') + 1
 segs = map_segments()
 exec_segs = [seg for seg in segs if seg.permission & segment.PERM_EXECUTE]
 
+instructions = []
+
 for x in exec_segs:
-    print(x)
+    start = x.startEA
+
+    inst_offset = search_down_bin(start, ARG_HEX_OPCODE)
+
+    while True:
+        # Check if in current segment or move to next segment
+        if not(x.startEA < inst_offset < x.endEA):
+            break
+        
+        # Check if expected opcode and add to instructions
+        if check_if_code(inst_offset, ARG_OPCODE):
+            instructions.append(inst_offset)
+        
+        inst_offset = search_down_bin(inst_offset + opcode_len, ARG_HEX_OPCODE)
+
+for x in instructions:
+    print(hex(x))
