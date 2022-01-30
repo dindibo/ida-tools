@@ -1,10 +1,14 @@
 from dis import Instruction
+from lib2to3.pgen2 import token
 from pprint import pprint
 import idc
 import ida_dbg
 import idautils
 import ida_segment
 import json
+import hashlib
+import random
+import time
 
 SEGMENT_MAX_VALUE = 0xffffffffffffffff
 
@@ -154,7 +158,48 @@ def add_bpt_python(ea, code, group=''):
         ida_dbg.set_bpt_group(bpt, group)
 
     idc.add_bpt(bpt)
-    
+
+
+def current_milli_time():
+    return round(time.time() * 1000)
+
+
+def md5(txt):
+    result = hashlib.md5(txt.encode())
+    return result.hexdigest()
+
+
+def gen_nonce():
+    timestamp = random.random()
+    return md5(str(current_milli_time()) +  str(timestamp))
+
+
+def add_uuidToken_to_code(pythonCode):
+    tok = gen_nonce()
+
+
+    temp = pythonCode
+    temp += '\r\n'
+    temp += '#' + tok
+
+    return temp, tok
+
+
+def write_UUIDToken(token):
+    global ARG_BPT_CODE_FNAME
+
+    fname = ARG_BPT_CODE_FNAME
+    fname = fname.split('\\')
+    fname.pop()
+    fname = '\\'.join(fname)
+    fname += '\\'
+
+    fname += 'code-break.token'
+
+    with open(fname, 'w+') as f:
+        f.write(token)
+
+    return fname
 
 
 ### Execution
@@ -191,6 +236,11 @@ desired_condition = ''
 
 with open(ARG_BPT_CODE_FNAME, 'r') as f:
     desired_condition = f.read()
+
+newCode, uuidToken = add_uuidToken_to_code(desired_condition)
+desired_condition = newCode
+
+write_UUIDToken(uuidToken)
 
 for x in instructions:
     add_bpt_python(get_ea_of_prev_line(x), desired_condition, group='code-break')
