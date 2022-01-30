@@ -1,6 +1,8 @@
 from dis import Instruction
 from pprint import pprint
 import idc
+import ida_dbg
+import idautils
 import ida_segment
 import json
 
@@ -115,12 +117,53 @@ def is_ea_in_segs(ea, segs):
     return False
 
 
+def get_char_at_ea(ea):
+    return idc.get_bytes(ea, 1)
+
+
+def get_string_from_ea(ea):
+    temp = b''
+    ptr = ea
+
+    ch = get_char_at_ea(ptr)
+
+    while ch != b'\x00':
+        temp += ch
+        ptr += 1
+        ch = get_char_at_ea(ptr)
+
+    return temp
+
+
+def get_ea_of_prev_line(ea):
+    prev_dis = idc.generate_disasm_line(ea-1, flags=0 )
+    opcode_len = len(Assemble(ea, prev_dis)[1])
+
+    return ea - opcode_len
+
+
+def add_bpt_python(ea, code, group=''):
+    bpt = ida_dbg.bpt_t()
+    bpt.set_abs_bpt(ea)
+    bpt.type=4
+    bpt.flags=268435464
+    bpt.condition=code
+    bpt.elang="Python"
+
+    if group != '':
+        ida_dbg.set_bpt_group(bpt, group)
+
+    idc.add_bpt(bpt)
+    
+
+
 ### Execution
 
 # Parameters
 
-ARG_OPCODE = 'rep stosb'
-ARG_HEX_OPCODE = 'F3 AA'
+ARG_OPCODE          = 'rep stosb'
+ARG_HEX_OPCODE      = 'F3 AA'
+ARG_BPT_CODE_FNAME  = 'C:\\Temp\\code-break\\bpt-code.py'
 
 opcode_len = ARG_HEX_OPCODE.count(' ') + 1
 segs = map_segments()
@@ -144,5 +187,10 @@ for x in exec_segs:
         
         inst_offset = search_down_bin(inst_offset + opcode_len, ARG_HEX_OPCODE)
 
+desired_condition = ''
+
+with open(ARG_BPT_CODE_FNAME, 'r') as f:
+    desired_condition = f.read()
+
 for x in instructions:
-    print(hex(x))
+    add_bpt_python(get_ea_of_prev_line(x), desired_condition, group='code-break')
